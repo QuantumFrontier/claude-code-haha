@@ -32,6 +32,8 @@ export function StreamingIndicator() {
   } else {
     verb = chatState === 'thinking'
       ? t('serverVerb.Thinking')
+      : chatState === 'compacting'
+        ? t('serverVerb.Compacting conversation')
       : chatState === 'tool_executing'
         ? t('serverVerb.Running')
         : t('serverVerb.Working')

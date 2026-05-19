@@ -91,7 +91,7 @@ export type TokenUsage = {
   cache_creation_tokens?: number
 }
 
-export type ChatState = 'idle' | 'thinking' | 'tool_executing' | 'streaming' | 'permission_pending'
+export type ChatState = 'idle' | 'thinking' | 'compacting' | 'tool_executing' | 'streaming' | 'permission_pending'
 
 export type TeamMemberStatus = {
   agentId: string
@@ -219,6 +219,17 @@ export type UIMessage =
   | { id: string; type: 'tool_result'; toolUseId: string; content: unknown; isError: boolean; timestamp: number; parentToolUseId?: string }
   | { id: string; type: 'background_task'; task: BackgroundAgentTask; timestamp: number }
   | { id: string; type: 'system'; content: string; timestamp: number }
+  | {
+      id: string
+      type: 'compact_summary'
+      title: string
+      phase?: 'compacting' | 'complete'
+      summary?: string
+      trigger?: 'manual' | 'auto'
+      preTokens?: number
+      messagesSummarized?: number
+      timestamp: number
+    }
   | {
       id: string
       type: 'goal_event'

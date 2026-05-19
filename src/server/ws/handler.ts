@@ -998,25 +998,39 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
       // CLI 发送 type:'user' 消息，其中 content 包含 tool_result 块
       const messages: ServerMessage[] = []
 
+      if (isCompactSummaryMessageContent(cliMsg.message?.content)) {
+        messages.push({
+          type: 'system_notification',
+          subtype: 'compact_summary',
+          message: cliMsg.message.content,
+          data: {
+            isSynthetic: cliMsg.isSynthetic,
+          },
+        })
+      }
+
       const localCommandOutput = extractLocalCommandOutput(
         cliMsg.message?.content,
       )
       if (localCommandOutput) {
-        const goalEvent = extractGoalEvent(
-          localCommandOutput,
-          streamState.pendingLocalCommand,
-        )
+        const pendingLocalCommand = streamState.pendingLocalCommand
         streamState.pendingLocalCommand = undefined
-        if (goalEvent) {
-          messages.push({
-            type: 'system_notification',
-            subtype: 'goal_event',
-            message: goalEvent.message,
-            data: goalEvent,
-          })
-        } else {
-          messages.push({ type: 'content_start', blockType: 'text' })
-          messages.push({ type: 'content_delta', text: localCommandOutput })
+        if (!isCompactLocalCommandOutput(localCommandOutput)) {
+          const goalEvent = extractGoalEvent(
+            localCommandOutput,
+            pendingLocalCommand,
+          )
+          if (goalEvent) {
+            messages.push({
+              type: 'system_notification',
+              subtype: 'goal_event',
+              message: goalEvent.message,
+              data: goalEvent,
+            })
+          } else {
+            messages.push({ type: 'content_start', blockType: 'text' })
+            messages.push({ type: 'content_delta', text: localCommandOutput })
+          }
         }
       }
 
@@ -1257,6 +1271,16 @@ export function translateCliMessage(cliMsg: any, sessionId: string): ServerMessa
           },
         }]
       }
+      if (subtype === 'status') {
+        if (cliMsg.status === 'compacting') {
+          return [{
+            type: 'status',
+            state: 'compacting',
+            verb: 'Compacting conversation',
+          }]
+        }
+        return []
+      }
       if (subtype === 'hook_started' || subtype === 'hook_response') {
         // Hook 执行中 — 不转发给前端
         return []
@@ -1478,6 +1502,10 @@ function extractLocalCommandOutput(
   return null
 }
 
+function isCompactLocalCommandOutput(output: string): boolean {
+  return output.trim() === 'Compacted'
+}
+
 function extractTaggedContent(raw: string, tag: string): string | null {
   const match = raw.match(new RegExp(`<${tag}>([\\s\\S]*?)</${tag}>`))
   return match?.[1]?.trim() ?? null
@@ -1565,6 +1593,15 @@ function getCompactBoundaryMessage(cliMsg: any): string {
   if (content) return content
 
   return 'Context compacted'
+}
+
+function isCompactSummaryMessageContent(content: unknown): content is string {
+  return (
+    typeof content === 'string' &&
+    content.trim().startsWith(
+      'This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.',
+    )
+  )
 }
 
 function rebindSessionOutput(

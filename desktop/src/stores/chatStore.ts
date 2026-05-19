@@ -33,6 +33,7 @@ import type {
 
 type ConnectionState = 'disconnected' | 'connecting' | 'connected' | 'reconnecting'
 type ToolCall = Extract<UIMessage, { type: 'tool_use' }>
+type CompactSummaryMessage = Extract<UIMessage, { type: 'compact_summary' }>
 
 export type ComposerDraftState = {
   input: string
@@ -194,6 +195,13 @@ function clearPendingToolParentUseIds(sessionId: string): void {
   pendingToolParentUseIdsBySession.delete(sessionId)
 }
 const AGENT_COMPLETION_NOTIFICATION_PREVIEW_CHARS = 160
+const COMPACT_SUMMARY_PREFIX =
+  'This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.'
+const COMPACT_SUMMARY_CUTOFFS = [
+  '\n\nIf you need specific details from before compaction',
+  '\n\nContinue the conversation from where it left off',
+  '\nContinue the conversation from where it left off',
+]
 
 let msgCounter = 0
 const nextId = () => `msg-${++msgCounter}-${Date.now()}`
@@ -270,6 +278,93 @@ function appendAssistantTextMessage(
       ...(model ? { model } : {}),
     },
   ]
+}
+
+function extractCompactSummaryContent(content: unknown): string | null {
+  if (typeof content !== 'string') return null
+  const trimmed = content.trim()
+  if (!trimmed.startsWith(COMPACT_SUMMARY_PREFIX)) return null
+
+  let summary = trimmed.slice(COMPACT_SUMMARY_PREFIX.length).trim()
+  for (const marker of COMPACT_SUMMARY_CUTOFFS) {
+    const index = summary.indexOf(marker)
+    if (index >= 0) {
+      summary = summary.slice(0, index).trim()
+    }
+  }
+  return summary || null
+}
+
+function compactMetadataFromUnknown(data: unknown): Pick<CompactSummaryMessage, 'trigger' | 'preTokens' | 'messagesSummarized'> {
+  if (!data || typeof data !== 'object') return {}
+  const record = data as Record<string, unknown>
+  const trigger = record.trigger === 'manual' || record.trigger === 'auto'
+    ? record.trigger
+    : undefined
+  const preTokens = typeof record.preTokens === 'number'
+    ? record.preTokens
+    : typeof record.pre_tokens === 'number'
+      ? record.pre_tokens
+      : undefined
+  const messagesSummarized = typeof record.messagesSummarized === 'number'
+    ? record.messagesSummarized
+    : typeof record.messages_summarized === 'number'
+      ? record.messages_summarized
+      : undefined
+
+  return {
+    ...(trigger ? { trigger } : {}),
+    ...(preTokens !== undefined ? { preTokens } : {}),
+    ...(messagesSummarized !== undefined ? { messagesSummarized } : {}),
+  }
+}
+
+function appendOrUpdateCompactSummary(
+  messages: UIMessage[],
+  update: Partial<Omit<CompactSummaryMessage, 'id' | 'type' | 'timestamp'>>,
+  timestamp: number,
+): UIMessage[] {
+  let existingIndex = -1
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    if (messages[index]?.type === 'compact_summary') {
+      existingIndex = index
+      break
+    }
+  }
+  if (existingIndex >= 0) {
+    const existing = messages[existingIndex] as CompactSummaryMessage
+    const next: CompactSummaryMessage = {
+      ...existing,
+      ...update,
+      title: update.title ?? existing.title,
+      timestamp: existing.timestamp,
+    }
+    return [
+      ...messages.slice(0, existingIndex),
+      next,
+      ...messages.slice(existingIndex + 1),
+    ]
+  }
+
+  return [
+    ...messages,
+    {
+      id: nextId(),
+      type: 'compact_summary',
+      title: update.title ?? 'Context compacted',
+      ...update,
+      timestamp,
+    },
+  ]
+}
+
+function collapseToCompactSummary(
+  messages: UIMessage[],
+  update: Partial<Omit<CompactSummaryMessage, 'id' | 'type' | 'timestamp'>>,
+  timestamp: number,
+): UIMessage[] {
+  const existing = [...messages].reverse().find((message): message is CompactSummaryMessage => message.type === 'compact_summary')
+  return appendOrUpdateCompactSummary(existing ? [existing] : [], update, timestamp)
 }
 
 function upsertBackgroundTaskMessage(
@@ -941,8 +1036,22 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           // streaming one markdown reply. Keep that turn intact so we do not
           // split formatting markers (for example backticks/strong markers)
           // across separate bubbles.
-          const preserveStreamingTurn = hasPendingStreamText && msg.state !== 'idle'
-          const shouldFlush = hasPendingStreamText && msg.state === 'idle'
+          const preserveStreamingTurn = hasPendingStreamText && msg.state !== 'idle' && msg.state !== 'compacting'
+          const shouldFlush = hasPendingStreamText && (msg.state === 'idle' || msg.state === 'compacting')
+          let nextMessages = session.messages
+          if (shouldFlush) {
+            nextMessages = appendAssistantTextMessage(nextMessages, pendingText, Date.now())
+          }
+          if (msg.state === 'compacting') {
+            nextMessages = collapseToCompactSummary(
+              nextMessages,
+              {
+                title: 'Context compacted',
+                phase: 'compacting',
+              },
+              Date.now(),
+            )
+          }
           return {
             chatState: preserveStreamingTurn ? 'streaming' : msg.state,
             statusVerb: msg.state === 'idle'
@@ -952,8 +1061,8 @@ export const useChatStore = create<ChatStore>((set, get) => ({
                 : '',
             ...(msg.tokens ? { tokenUsage: { ...session.tokenUsage, output_tokens: msg.tokens } } : {}),
             ...(msg.state === 'idle' ? { activeThinkingId: null } : {}),
+            ...((shouldFlush || msg.state === 'compacting') ? { messages: nextMessages } : {}),
             ...(shouldFlush ? {
-              messages: appendAssistantTextMessage(session.messages, pendingText, Date.now()),
               streamingText: '',
             } : pendingText !== session.streamingText ? { streamingText: pendingText } : {}),
           }
@@ -1284,19 +1393,40 @@ export const useChatStore = create<ChatStore>((set, get) => ({
           useTabStore.getState().updateTabStatus(sessionId, 'idle')
         }
         if (msg.subtype === 'compact_boundary') {
+          const metadata = compactMetadataFromUnknown(msg.data)
           update((session) => ({
-            messages: [
-              ...session.messages,
+            chatState: session.chatState === 'compacting' ? 'thinking' : session.chatState,
+            statusVerb: session.chatState === 'compacting' ? '' : session.statusVerb,
+            messages: collapseToCompactSummary(
+              session.messages,
               {
-                id: nextId(),
-                type: 'system',
-                content: typeof msg.message === 'string' && msg.message.trim()
+                title: typeof msg.message === 'string' && msg.message.trim()
                   ? msg.message
                   : 'Context compacted',
-                timestamp: Date.now(),
+                phase: 'complete',
+                ...metadata,
               },
-            ],
+              Date.now(),
+            ),
           }))
+        }
+        if (msg.subtype === 'compact_summary') {
+          const summary = extractCompactSummaryContent(msg.message)
+          if (summary) {
+            update((session) => ({
+              messages: collapseToCompactSummary(
+                session.messages,
+                {
+                  title: 'Context compacted',
+                  phase: 'complete',
+                  summary,
+                  trigger: 'auto',
+                  ...compactMetadataFromUnknown(msg.data),
+                },
+                Date.now(),
+              ),
+            }))
+          }
         }
         if (msg.subtype === 'memory_saved') {
           const files = normalizeMemoryEventFiles(msg.data)
@@ -1713,6 +1843,10 @@ function extractLocalCommandOutputText(content: unknown): string | null {
   return readXmlTag(text, 'local-command-stdout') ?? readXmlTag(text, 'local-command-stderr') ?? null
 }
 
+function isCompactLocalCommandOutput(output: string): boolean {
+  return output.trim() === 'Compacted'
+}
+
 function parseGoalEventFromLocalCommandOutput(
   output: string,
   command: { name: string; args: string } | null,
@@ -2021,6 +2155,16 @@ export function mapHistoryMessagesToUiMessages(
 
     const timestamp = new Date(msg.timestamp).getTime()
     if (msg.type === 'system' && typeof msg.content === 'string') {
+      if (msg.content.trim() === 'Conversation compacted' || msg.content.trim() === 'Context compacted') {
+        const compactMessages = collapseToCompactSummary(
+          uiMessages,
+          { title: 'Context compacted', phase: 'complete' },
+          timestamp,
+        )
+        uiMessages.splice(0, uiMessages.length, ...compactMessages)
+        continue
+      }
+
       const localCommand = parseGoalCommandFromLocalCommand(msg.content)
       if (localCommand) {
         pendingGoalCommand = localCommand
@@ -2051,6 +2195,27 @@ export function mapHistoryMessagesToUiMessages(
       }
     }
     if (msg.type === 'user' && typeof msg.content === 'string') {
+      const localCommandOutput = extractLocalCommandOutputText(msg.content)
+      if (localCommandOutput && isCompactLocalCommandOutput(localCommandOutput)) {
+        continue
+      }
+
+      const compactSummary = extractCompactSummaryContent(msg.content)
+      if (compactSummary) {
+        const compactMessages = collapseToCompactSummary(
+          uiMessages,
+          {
+            title: 'Context compacted',
+            phase: 'complete',
+            summary: compactSummary,
+            trigger: 'auto',
+          },
+          timestamp,
+        )
+        uiMessages.splice(0, uiMessages.length, ...compactMessages)
+        continue
+      }
+
       if (isTeammateMessage(msg.content)) {
         if (!includeTeammateMessages) continue
         const teammateContents = extractVisibleTeammateMessageContents(msg.content)

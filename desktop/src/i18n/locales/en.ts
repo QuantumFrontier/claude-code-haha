@@ -970,6 +970,14 @@ export const en = {
   'chat.goalEvent.statusValue': 'Status: {value}',
   'chat.goalEvent.budget': 'Budget: {value}',
   'chat.goalEvent.continuations': 'Continuations: {value}',
+  'chat.compactSummary.compacting': 'Compacting context',
+  'chat.compactSummary.title': 'Context compacted',
+  'chat.compactSummary.autoTitle': 'Context automatically compacted',
+  'chat.compactSummary.manualTitle': 'Context manually compacted',
+  'chat.compactSummary.trigger.manual': 'manual',
+  'chat.compactSummary.trigger.auto': 'auto',
+  'chat.compactSummary.tokens': '{count} tokens before compact',
+  'chat.compactSummary.messages': '{count} messages summarized',
   'chat.activeGoal.title': 'Active goal',
   'chat.activeGoal.running': 'Loop running',
   'chat.activeGoal.active': 'Active',
@@ -1491,6 +1499,7 @@ export const en = {
 
   // ─── Server Status Verbs ──────────────────────────────────────
   'serverVerb.Thinking': 'Thinking',
+  'serverVerb.Compacting conversation': 'Compacting context',
   'serverVerb.Running': 'Running',
   'serverVerb.Working': 'Working',
   'serverVerb.Creating worktree': 'Creating worktree',

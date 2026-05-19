@@ -972,6 +972,14 @@ export const zh: Record<TranslationKey, string> = {
   'chat.goalEvent.statusValue': '状态：{value}',
   'chat.goalEvent.budget': '预算：{value}',
   'chat.goalEvent.continuations': '续作次数：{value}',
+  'chat.compactSummary.compacting': '上下文正在压缩',
+  'chat.compactSummary.title': '上下文已压缩',
+  'chat.compactSummary.autoTitle': '上下文已自动压缩',
+  'chat.compactSummary.manualTitle': '上下文已手动压缩',
+  'chat.compactSummary.trigger.manual': '手动',
+  'chat.compactSummary.trigger.auto': '自动',
+  'chat.compactSummary.tokens': '压缩前 {count} tokens',
+  'chat.compactSummary.messages': '已摘要 {count} 条消息',
   'chat.activeGoal.title': '当前目标',
   'chat.activeGoal.running': '自循环运行中',
   'chat.activeGoal.active': '进行中',
@@ -1493,6 +1501,7 @@ export const zh: Record<TranslationKey, string> = {
 
   // ─── Server Status Verbs ──────────────────────────────────────
   'serverVerb.Thinking': '思考中',
+  'serverVerb.Compacting conversation': '正在压缩上下文',
   'serverVerb.Running': '运行中',
   'serverVerb.Working': '处理中',
   'serverVerb.Creating worktree': '正在创建工作树',

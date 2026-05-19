@@ -222,6 +222,81 @@ describe('chatStore history mapping', () => {
     expect(mapped[3]).toMatchObject({ parentToolUseId: 'agent-1' })
   })
 
+  it('maps compact boundary and summary history into one compact card', () => {
+    const messages: MessageEntry[] = [
+      {
+        id: 'old-user',
+        type: 'user',
+        content: 'Build the billing import flow',
+        timestamp: '2026-05-19T09:59:58.000Z',
+      },
+      {
+        id: 'old-assistant',
+        type: 'assistant',
+        content: 'Implemented the flow.',
+        timestamp: '2026-05-19T09:59:59.000Z',
+      },
+      {
+        id: 'compact-boundary',
+        type: 'system',
+        content: 'Conversation compacted',
+        timestamp: '2026-05-19T10:00:00.000Z',
+      },
+      {
+        id: 'compact-summary',
+        type: 'user',
+        content: [
+          'This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.',
+          '',
+          'Kept the billing import implementation details and next verification steps.',
+          '',
+          'If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /tmp/transcript.jsonl',
+        ].join('\n'),
+        timestamp: '2026-05-19T10:00:01.000Z',
+      },
+    ]
+
+    const mapped = mapHistoryMessagesToUiMessages(messages)
+
+    expect(mapped).toHaveLength(1)
+    expect(mapped).toMatchObject([
+      {
+        type: 'compact_summary',
+        title: 'Context compacted',
+        summary: 'Kept the billing import implementation details and next verification steps.',
+      },
+    ])
+  })
+
+  it('drops compact local command stdout after mapping compact history', () => {
+    const messages: MessageEntry[] = [
+      {
+        id: 'compact-summary',
+        type: 'user',
+        content: [
+          'This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.',
+          '',
+          'Kept the billing import implementation details.',
+        ].join('\n'),
+        timestamp: '2026-05-19T10:00:01.000Z',
+      },
+      {
+        id: 'compact-stdout',
+        type: 'user',
+        content: '<local-command-stdout>Compacted </local-command-stdout>',
+        timestamp: '2026-05-19T10:00:02.000Z',
+      },
+    ]
+
+    const mapped = mapHistoryMessagesToUiMessages(messages)
+
+    expect(mapped).toHaveLength(1)
+    expect(mapped[0]).toMatchObject({
+      type: 'compact_summary',
+      summary: 'Kept the billing import implementation details.',
+    })
+  })
+
   it('restores saved memory system events from transcript history', () => {
     const messages: MessageEntry[] = [
       {
@@ -1809,11 +1884,14 @@ describe('chatStore history mapping', () => {
     ])
   })
 
-  it('renders compact boundary notifications as system messages', () => {
+  it('renders compact boundary notifications as compact summary cards', () => {
     useChatStore.setState({
       sessions: {
         [TEST_SESSION_ID]: {
-          messages: [],
+          messages: [
+            { id: 'old-user', type: 'user_text', content: 'Build the billing import flow', timestamp: 1 },
+            { id: 'old-assistant', type: 'assistant_text', content: 'Implemented the flow.', timestamp: 2 },
+          ],
           chatState: 'idle',
           connectionState: 'connected',
           streamingText: '',
@@ -1837,11 +1915,112 @@ describe('chatStore history mapping', () => {
       type: 'system_notification',
       subtype: 'compact_boundary',
       message: 'Context compacted',
+      data: { trigger: 'auto', pre_tokens: 120000 },
     })
 
-    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.messages).toMatchObject([
-      { type: 'system', content: 'Context compacted' },
+    const messages = useChatStore.getState().sessions[TEST_SESSION_ID]?.messages ?? []
+    expect(messages).toHaveLength(1)
+    expect(messages).toMatchObject([
+      {
+        type: 'compact_summary',
+        title: 'Context compacted',
+        trigger: 'auto',
+        preTokens: 120000,
+      },
     ])
+  })
+
+  it('attaches compact summary content to the latest compact card', () => {
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: {
+          messages: [],
+          chatState: 'compacting',
+          connectionState: 'connected',
+          streamingText: '',
+          streamingToolInput: '',
+          activeToolUseId: null,
+          activeToolName: null,
+          activeThinkingId: null,
+          pendingPermission: null,
+          pendingComputerUsePermission: null,
+          tokenUsage: { input_tokens: 0, output_tokens: 0 },
+          elapsedSeconds: 0,
+          statusVerb: 'Compacting conversation',
+          slashCommands: [],
+          agentTaskNotifications: {},
+          elapsedTimer: null,
+        },
+      },
+    })
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'system_notification',
+      subtype: 'compact_boundary',
+      message: 'Context compacted',
+    })
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'system_notification',
+      subtype: 'compact_summary',
+      message: [
+        'This session is being continued from a previous conversation that ran out of context. The summary below covers the earlier portion of the conversation.',
+        '',
+        'Implemented the billing report and verified export behavior.',
+        '',
+        'If you need specific details from before compaction (like exact code snippets, error messages, or content you generated), read the full transcript at: /tmp/session.jsonl',
+      ].join('\n'),
+    })
+
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.chatState).toBe('thinking')
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.messages).toMatchObject([
+      {
+        type: 'compact_summary',
+        summary: 'Implemented the billing report and verified export behavior.',
+      },
+    ])
+  })
+
+  it('tracks compacting status as an active chat state', () => {
+    useChatStore.setState({
+      sessions: {
+        [TEST_SESSION_ID]: {
+          messages: [
+            { id: 'old-user', type: 'user_text', content: 'old context', timestamp: 1 },
+          ],
+          chatState: 'thinking',
+          connectionState: 'connected',
+          streamingText: '',
+          streamingToolInput: '',
+          activeToolUseId: null,
+          activeToolName: null,
+          activeThinkingId: null,
+          pendingPermission: null,
+          pendingComputerUsePermission: null,
+          tokenUsage: { input_tokens: 0, output_tokens: 0 },
+          elapsedSeconds: 0,
+          statusVerb: '',
+          slashCommands: [],
+          agentTaskNotifications: {},
+          elapsedTimer: null,
+        },
+      },
+    })
+
+    useChatStore.getState().handleServerMessage(TEST_SESSION_ID, {
+      type: 'status',
+      state: 'compacting',
+      verb: 'Compacting conversation',
+    })
+
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.chatState).toBe('compacting')
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.statusVerb).toBe('Compacting conversation')
+    expect(useChatStore.getState().sessions[TEST_SESSION_ID]?.messages).toMatchObject([
+      {
+        type: 'compact_summary',
+        phase: 'compacting',
+      },
+    ])
+    expect(updateTabStatusMock).toHaveBeenLastCalledWith(TEST_SESSION_ID, 'running')
   })
 
   it('renders memory saved notifications as chat memory events', () => {

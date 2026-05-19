@@ -478,6 +478,56 @@ describe('MessageList nested tool calls', () => {
     expect(container.textContent).toContain('Agent')
   })
 
+  it('shows a dedicated compacting status indicator', () => {
+    useChatStore.setState({
+      sessions: {
+        [ACTIVE_TAB]: makeSessionState({
+          chatState: 'compacting',
+          statusVerb: 'Compacting conversation',
+        }),
+      },
+    })
+
+    render(<MessageList />)
+
+    const divider = screen.getByTestId('compact-status-divider')
+    expect(within(divider).getByText('Compacting context')).toBeTruthy()
+    expect(screen.queryByText('Compacting context...')).toBeNull()
+  })
+
+  it('renders compact completion as an expandable timeline divider', () => {
+    useChatStore.setState({
+      sessions: {
+        [ACTIVE_TAB]: makeSessionState({
+          messages: [
+            {
+              id: 'compact-1',
+              type: 'compact_summary',
+              title: 'Context compacted',
+              trigger: 'auto',
+              preTokens: 123000,
+              summary: 'Built the invoice import flow and verified retry behavior.',
+              timestamp: 1,
+            },
+          ],
+        }),
+      },
+    })
+
+    render(<MessageList />)
+
+    const divider = screen.getByTestId('compact-status-divider')
+    expect(within(divider).getByText('Context automatically compacted')).toBeTruthy()
+    expect(divider.textContent).not.toContain('123k tokens before compact')
+    expect(divider.textContent).not.toContain('Built the invoice import flow')
+
+    fireEvent.click(within(divider).getByRole('button'))
+
+    expect(divider.textContent).toContain('auto')
+    expect(divider.textContent).toContain('123k tokens before compact')
+    expect(divider.textContent).toContain('Built the invoice import flow and verified retry behavior.')
+  })
+
   it('keeps mixed tool groups active while a nested child tool call is unresolved', () => {
     useChatStore.setState({
       sessions: {
