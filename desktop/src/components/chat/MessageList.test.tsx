@@ -153,6 +153,39 @@ describe('MessageList nested tool calls', () => {
     expect(container.querySelector('[data-virtual-message-item]')).toBeNull()
   })
 
+  it('marks transcript items as offscreen-renderable without virtualizing variable-height rows', () => {
+    useChatStore.setState({
+      sessions: {
+        [ACTIVE_TAB]: makeSessionState({
+          messages: [
+            {
+              id: 'assistant-1',
+              type: 'assistant_text',
+              content: 'first assistant reply',
+              timestamp: 1,
+            },
+            {
+              id: 'assistant-2',
+              type: 'assistant_text',
+              content: 'second assistant reply',
+              timestamp: 2,
+            },
+          ],
+        }),
+      },
+    })
+
+    const { container } = render(<MessageList />)
+    const renderItems = container.querySelectorAll('.chat-render-item')
+
+    expect(renderItems).toHaveLength(2)
+    for (const item of renderItems) {
+      expect(item.className).toContain('[content-visibility:auto]')
+      expect(item.className).toContain('[contain-intrinsic-size:auto_180px]')
+    }
+    expect(container.querySelector('[data-virtual-message-item]')).toBeNull()
+  })
+
   it('filters duplicate unresolved AskUserQuestion cards while a matching permission is pending', () => {
     const messages: UIMessage[] = [
       {
@@ -1732,6 +1765,78 @@ describe('MessageList nested tool calls', () => {
     })
     expect(scrollIntoView).not.toHaveBeenCalled()
     expect(scrollTop).toBe(600)
+  })
+
+  it('keeps auto-scrolling without reading scroll geometry synchronously', async () => {
+    useChatStore.setState({
+      sessions: {
+        [ACTIVE_TAB]: makeSessionState({
+          chatState: 'streaming',
+          messages: [
+            {
+              id: 'user-1',
+              type: 'user_text',
+              content: 'latest prompt',
+              timestamp: 1,
+            },
+          ],
+          streamingText: 'streaming',
+        }),
+      },
+    })
+
+    const { container } = render(<MessageList />)
+    const scroller = container.querySelector('.overflow-y-auto') as HTMLDivElement
+    const readScrollHeight = vi.fn(() => {
+      throw new Error('scrollHeight should not be read while pinning to bottom')
+    })
+    const readClientHeight = vi.fn(() => {
+      throw new Error('clientHeight should not be read while pinning to bottom')
+    })
+    let scrollTop = 552
+    Object.defineProperty(scroller, 'scrollHeight', {
+      configurable: true,
+      get: readScrollHeight,
+    })
+    Object.defineProperty(scroller, 'clientHeight', {
+      configurable: true,
+      get: readClientHeight,
+    })
+    Object.defineProperty(scroller, 'scrollTop', {
+      configurable: true,
+      get: () => scrollTop,
+      set: (value) => {
+        scrollTop = value >= 1_000_000_000 ? 600 : value
+      },
+    })
+    Object.defineProperty(scroller, 'scrollTo', {
+      configurable: true,
+      value: vi.fn((options: ScrollToOptions | number, y?: number) => {
+        scroller.scrollTop = typeof options === 'number' ? y ?? 0 : options.top ?? 0
+      }),
+    })
+
+    await waitForProgrammaticScrollReset()
+    act(() => {
+      useChatStore.setState((state) => ({
+        sessions: {
+          ...state.sessions,
+          [ACTIVE_TAB]: {
+            ...state.sessions[ACTIVE_TAB]!,
+            streamingText: 'streaming next token',
+          },
+        },
+      }))
+    })
+
+    await waitFor(() => {
+      expect(screen.getByText('streaming next token')).toBeTruthy()
+    })
+    await waitForProgrammaticScrollReset()
+
+    expect(scrollTop).toBe(600)
+    expect(readScrollHeight).not.toHaveBeenCalled()
+    expect(readClientHeight).not.toHaveBeenCalled()
   })
 
   it('keeps mobile H5 streaming output pinned after the transcript height grows', async () => {

@@ -782,6 +782,7 @@ type MessageListProps = {
 }
 
 const AUTO_SCROLL_BOTTOM_THRESHOLD_PX = 48
+const SCROLL_BOTTOM_SENTINEL = 1_000_000_000
 const MAX_SCROLL_SNAPSHOTS = 100
 const EMPTY_MESSAGES: UIMessage[] = []
 const CHAT_SCROLL_AREA_CLASS = [
@@ -797,6 +798,11 @@ const CHAT_SCROLL_AREA_CLASS = [
   '[&::-webkit-scrollbar-thumb]:bg-clip-content',
   '[&::-webkit-scrollbar-thumb:hover]:border-2',
   '[&::-webkit-scrollbar-thumb:hover]:bg-[color-mix(in_srgb,var(--color-outline)_90%,transparent)]',
+].join(' ')
+const CHAT_RENDER_ITEM_CLASS = [
+  'chat-render-item',
+  '[content-visibility:auto]',
+  '[contain-intrinsic-size:auto_180px]',
 ].join(' ')
 
 type SessionScrollSnapshot = {
@@ -827,12 +833,30 @@ function rememberSessionScroll(sessionId: string, element: HTMLElement) {
   })
 }
 
-function clampScrollTop(element: HTMLElement, scrollTop: number) {
-  return Math.max(0, Math.min(scrollTop, getBottomScrollTop(element)))
-}
-
 function getBottomScrollTop(element: HTMLElement) {
   return Math.max(0, element.scrollHeight - element.clientHeight)
+}
+
+function setScrollTopWithoutLayoutRead(element: HTMLElement, scrollTop: number) {
+  element.scrollTop = Math.max(0, scrollTop)
+}
+
+function setScrollToBottomWithoutLayoutRead(element: HTMLElement, behavior: ScrollBehavior) {
+  if (typeof element.scrollTo === 'function') {
+    try {
+      element.scrollTo({ top: SCROLL_BOTTOM_SENTINEL, behavior })
+    } catch {
+      element.scrollTo(0, SCROLL_BOTTOM_SENTINEL)
+    }
+  }
+  element.scrollTop = SCROLL_BOTTOM_SENTINEL
+
+  // Browsers clamp the large value to the true bottom without needing us to
+  // synchronously read layout metrics. JSDOM test doubles do not clamp, so keep
+  // the old numeric behavior there as a fallback.
+  if (element.scrollTop === SCROLL_BOTTOM_SENTINEL) {
+    element.scrollTop = getBottomScrollTop(element)
+  }
 }
 
 export function MessageList({ sessionId, compact = false }: MessageListProps = {}) {
@@ -893,21 +917,14 @@ export function MessageList({ sessionId, compact = false }: MessageListProps = {
     shouldAutoScrollRef.current = true
     isProgrammaticScrollingRef.current = true
     const container = scrollContainerRef.current
-    const targetScrollTop = container ? getBottomScrollTop(container) : null
+    let requestedScrollTop: number | null = null
     if (container) {
-      const nextScrollTop = targetScrollTop ?? 0
-      if (typeof container.scrollTo === 'function') {
-        try {
-          container.scrollTo({ top: nextScrollTop, behavior })
-        } catch {
-          container.scrollTo(0, nextScrollTop)
-        }
-      }
-      container.scrollTop = nextScrollTop
+      setScrollToBottomWithoutLayoutRead(container, behavior)
+      requestedScrollTop = container.scrollTop
     }
     if (container && resolvedSessionId) {
       sessionScrollSnapshots.set(resolvedSessionId, {
-        scrollTop: getBottomScrollTop(container),
+        scrollTop: container.scrollTop,
         wasAtBottom: true,
       })
     }
@@ -919,15 +936,14 @@ export function MessageList({ sessionId, compact = false }: MessageListProps = {
         shouldAutoScrollRef.current &&
         latestContainer &&
         (
-          targetScrollTop === null ||
-          latestContainer.scrollTop === targetScrollTop ||
-          isNearScrollBottom(latestContainer)
+          requestedScrollTop === null ||
+          latestContainer.scrollTop === requestedScrollTop
         )
       ) {
-        latestContainer.scrollTop = getBottomScrollTop(latestContainer)
+        setScrollToBottomWithoutLayoutRead(latestContainer, 'auto')
         if (resolvedSessionId) {
           sessionScrollSnapshots.set(resolvedSessionId, {
-            scrollTop: getBottomScrollTop(latestContainer),
+            scrollTop: latestContainer.scrollTop,
             wasAtBottom: true,
           })
         }
@@ -959,7 +975,7 @@ export function MessageList({ sessionId, compact = false }: MessageListProps = {
 
       const container = scrollContainerRef.current
       if (container && snapshot && !snapshot.wasAtBottom) {
-        container.scrollTop = clampScrollTop(container, snapshot.scrollTop)
+        setScrollTopWithoutLayoutRead(container, snapshot.scrollTop)
         setShowJumpToLatest(true)
       } else {
         scrollToBottom('auto')
@@ -1197,7 +1213,7 @@ export function MessageList({ sessionId, compact = false }: MessageListProps = {
             const cardsForItem = turnCardsByRenderIndex.get(index) ?? []
 
             return (
-              <div key={itemKey}>
+              <div key={itemKey} className={CHAT_RENDER_ITEM_CLASS}>
                 {item.kind === 'tool_group' ? (
                   <ToolCallGroup
                     toolCalls={item.toolCalls}
