@@ -134,6 +134,36 @@ function renderCard(filesChanged: string[]) {
 // ──────────────────────────────────────────────────────────────────────────────
 // Tests
 // ──────────────────────────────────────────────────────────────────────────────
+describe('CurrentTurnChangeCard – rich file row (icon / name / type)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    ensureTargetsMock.mockResolvedValue(undefined)
+    openPreviewSpy.mockResolvedValue(undefined)
+  })
+
+  it('renders the filename (not just full path) for each file', () => {
+    renderCard(['/w/proj/README.md', '/w/proj/src/index.ts'])
+    expect(screen.getByText('README.md')).toBeInTheDocument()
+    expect(screen.getByText('index.ts')).toBeInTheDocument()
+  })
+
+  it('renders the extension badge for a markdown file', () => {
+    renderCard(['/w/proj/README.md'])
+    // The type subtitle contains the ext in uppercase: "· MD"
+    expect(screen.getByText(/MD/)).toBeInTheDocument()
+  })
+
+  it('renders the extension badge for a TypeScript file', () => {
+    renderCard(['/w/proj/src/main.ts'])
+    expect(screen.getByText(/TS/)).toBeInTheDocument()
+  })
+
+  it('renders the extension badge for an HTML file', () => {
+    renderCard(['/w/proj/index.html'])
+    expect(screen.getByText(/HTML/)).toBeInTheDocument()
+  })
+})
+
 describe('CurrentTurnChangeCard – open-with buttons', () => {
   beforeEach(() => {
     vi.clearAllMocks()

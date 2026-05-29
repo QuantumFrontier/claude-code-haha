@@ -101,6 +101,11 @@ export const zh: Record<TranslationKey, string> = {
   'openWith.workspacePreview': '工作台预览',
   'openWith.openInTarget': '用 {target} 打开',
   'openWith.revealInTarget': '在 {target} 中显示',
+  'openWith.fileType.document': '文档',
+  'openWith.fileType.web': '网页',
+  'openWith.fileType.image': '图片',
+  'openWith.fileType.code': '代码',
+  'openWith.fileType.file': '文件',
 
   // ─── Workspace Panel ───────────────────────────────
   'workspace.changedFiles': '已更改文件',

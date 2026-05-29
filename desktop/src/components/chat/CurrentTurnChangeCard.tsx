@@ -1,10 +1,11 @@
 import { useCallback, useMemo, useState } from 'react'
 import type { MouseEvent as ReactMouseEvent } from 'react'
+import { ChevronDown } from 'lucide-react'
 import { sessionsApi, type SessionTurnCheckpoint } from '../../api/sessions'
 import { useTranslation, type TranslationKey } from '../../i18n'
 import { WorkspaceDiffSurface } from '../workspace/WorkspaceCodeSurface'
 import { OpenWithMenu } from '../common/OpenWithMenu'
-import { buildOpenWithItems, type OpenWithItem } from '../../lib/openWithItems'
+import { buildOpenWithItems, describeFileType, type OpenWithItem } from '../../lib/openWithItems'
 import { openWithContextForWorkspaceFile } from '../../lib/openWithContextForHref'
 import { getServerBaseUrl } from '../../lib/desktopRuntime'
 import { useOpenTargetStore } from '../../stores/openTargetStore'
@@ -173,9 +174,11 @@ export function CurrentTurnChangeCard({
         {files.map((fileEntry) => {
           const isExpanded = expandedPath === fileEntry.apiPath
           const diffState = diffByPath[fileEntry.apiPath]
+          const fileName = fileEntry.displayPath.split('/').pop() || fileEntry.displayPath
+          const typeInfo = describeFileType(fileEntry.displayPath)
           return (
             <div key={fileEntry.apiPath}>
-              <div className="flex items-center">
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => toggleDiff(fileEntry)}
@@ -183,22 +186,24 @@ export function CurrentTurnChangeCard({
                     isExpanded ? 'chat.turnChangesHideDiffAria' : 'chat.turnChangesShowDiffAria',
                     { path: fileEntry.displayPath },
                   )}
-                  className="flex min-h-11 flex-1 items-center gap-3 px-4 text-left text-sm text-[var(--color-text-primary)] transition-colors hover:bg-[var(--color-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-brand)]/35"
+                  title={fileEntry.displayPath}
+                  className="flex min-h-[52px] min-w-0 flex-1 items-center gap-3 rounded-[var(--radius-md)] px-4 text-left transition-colors hover:bg-[var(--color-surface-hover)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-brand)]/35"
                 >
-                  <span className="material-symbols-outlined shrink-0 text-[17px] text-[var(--color-text-tertiary)]">
-                    {isExpanded ? 'keyboard_arrow_down' : 'chevron_right'}
+                  <span className="material-symbols-outlined shrink-0 text-[22px] text-[var(--color-text-tertiary)]">{typeInfo.icon}</span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-sm font-medium text-[var(--color-text-primary)]">{fileName}</span>
+                    <span className="block truncate text-xs text-[var(--color-text-tertiary)]">{`${t(typeInfo.categoryKey as Parameters<typeof t>[0])} · ${typeInfo.ext}`}</span>
                   </span>
-                  <span className="min-w-0 flex-1 truncate font-mono text-[13px]">
-                    {fileEntry.displayPath}
-                  </span>
+                  <span className="material-symbols-outlined shrink-0 text-[18px] text-[var(--color-text-tertiary)]">{isExpanded ? 'keyboard_arrow_down' : 'chevron_right'}</span>
                 </button>
                 <button
                   type="button"
                   aria-label={t('openWith.title')}
                   onClick={(event) => handleOpenWith(event, fileEntry)}
-                  className="mr-2 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[var(--radius-md)] text-[var(--color-text-tertiary)] hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35"
+                  className="mr-2 inline-flex h-8 shrink-0 items-center gap-1 rounded-[var(--radius-md)] border border-[var(--color-border)] bg-[var(--color-surface)] px-2.5 text-xs font-medium text-[var(--color-text-secondary)] transition-colors hover:bg-[var(--color-surface-hover)] hover:text-[var(--color-text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-brand)]/35"
                 >
-                  <span className="material-symbols-outlined text-[18px]">open_in_new</span>
+                  {t('openWith.title')}
+                  <ChevronDown size={14} strokeWidth={1.9} />
                 </button>
               </div>
 

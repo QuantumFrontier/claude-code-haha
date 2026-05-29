@@ -1,6 +1,51 @@
 import { describe, expect, it, vi } from 'vitest'
-import { buildOpenWithItems, type OpenWithContext, type OpenWithDeps } from './openWithItems'
+import { buildOpenWithItems, describeFileType, type OpenWithContext, type OpenWithDeps } from './openWithItems'
 import type { OpenTarget } from '../stores/openTargetStore'
+
+// ──────────────────────────────────────────────────────────────────────────────
+// describeFileType tests
+// ──────────────────────────────────────────────────────────────────────────────
+describe('describeFileType', () => {
+  it('markdown → document icon, document categoryKey, uppercased ext', () => {
+    expect(describeFileType('a.md')).toEqual({
+      icon: 'description',
+      categoryKey: 'openWith.fileType.document',
+      ext: 'MD',
+    })
+  })
+
+  it('HTML (uppercase path) → web icon, web categoryKey', () => {
+    expect(describeFileType('x.HTML')).toEqual({
+      icon: 'html',
+      categoryKey: 'openWith.fileType.web',
+      ext: 'HTML',
+    })
+  })
+
+  it('png → image icon, image categoryKey', () => {
+    expect(describeFileType('y.png')).toEqual({
+      icon: 'image',
+      categoryKey: 'openWith.fileType.image',
+      ext: 'PNG',
+    })
+  })
+
+  it('tsx → code icon, code categoryKey', () => {
+    expect(describeFileType('z.tsx')).toEqual({
+      icon: 'code',
+      categoryKey: 'openWith.fileType.code',
+      ext: 'TSX',
+    })
+  })
+
+  it('unknown extension → generic file icon, file categoryKey', () => {
+    expect(describeFileType('w.bin')).toEqual({
+      icon: 'insert_drive_file',
+      categoryKey: 'openWith.fileType.file',
+      ext: 'BIN',
+    })
+  })
+})
 
 function makeT() {
   return (key: string, vars?: Record<string, string>) =>

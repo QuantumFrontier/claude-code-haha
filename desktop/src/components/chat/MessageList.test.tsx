@@ -3015,9 +3015,9 @@ describe('MessageList nested tool calls', () => {
 
     const cards = await screen.findAllByLabelText('Turn changed files')
     expect(cards).toHaveLength(2)
-    expect(screen.getByText('src/first.ts')).toBeTruthy()
-    expect(screen.getByText('src/second.ts')).toBeTruthy()
-    expect(screen.queryByText('src/third.ts')).toBeNull()
+    expect(screen.getByText('first.ts')).toBeTruthy()
+    expect(screen.getByText('second.ts')).toBeTruthy()
+    expect(screen.queryByText('third.ts')).toBeNull()
   })
 
   it('expands a historical turn diff through the turn checkpoint diff API', async () => {
@@ -3231,7 +3231,7 @@ describe('MessageList nested tool calls', () => {
 
     render(<MessageList />)
 
-    expect(await screen.findByText('src/live.ts')).toBeTruthy()
+    expect(await screen.findByText('live.ts')).toBeTruthy()
     fireEvent.click(screen.getByRole('button', { name: 'Show diff for src/live.ts' }))
     await screen.findByTestId('workspace-code')
     expect(sessionsApi.getTurnCheckpointDiff).toHaveBeenCalledWith(
@@ -3284,7 +3284,7 @@ describe('MessageList nested tool calls', () => {
 
     render(<MessageList />)
 
-    expect(await screen.findByText('src/blank-response.ts')).toBeTruthy()
+    expect(await screen.findByText('blank-response.ts')).toBeTruthy()
   })
 
   it('keeps historical turn change cards visible while the next turn is running', async () => {
@@ -3329,7 +3329,7 @@ describe('MessageList nested tool calls', () => {
 
     render(<MessageList />)
 
-    expect(await screen.findByText('src/first.ts')).toBeTruthy()
+    expect(await screen.findByText('first.ts')).toBeTruthy()
 
     act(() => {
       useChatStore.setState({
@@ -3343,7 +3343,7 @@ describe('MessageList nested tool calls', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByText('src/first.ts')).toBeTruthy()
+      expect(screen.getByText('first.ts')).toBeTruthy()
     })
   })
 
@@ -3452,7 +3452,7 @@ describe('MessageList nested tool calls', () => {
 
     render(<MessageList />)
 
-    const historicalCard = (await screen.findByText('src/first.ts')).closest('section')
+    const historicalCard = (await screen.findByText('first.ts')).closest('section')
     expect(historicalCard).toBeTruthy()
     fireEvent.click(
       within(historicalCard as HTMLElement).getByRole('button', {
@@ -3553,8 +3553,8 @@ describe('MessageList nested tool calls', () => {
 
     const cards = await screen.findAllByLabelText('Turn changed files')
     expect(cards).toHaveLength(1)
-    expect(screen.getByText('src/first.ts')).toBeTruthy()
-    expect(screen.queryByText('src/second.ts')).toBeNull()
+    expect(screen.getByText('first.ts')).toBeTruthy()
+    expect(screen.queryByText('second.ts')).toBeNull()
   })
 
   it('shows raw startup details under translated CLI startup errors', () => {

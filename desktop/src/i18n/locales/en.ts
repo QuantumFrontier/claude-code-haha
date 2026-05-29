@@ -99,6 +99,11 @@ export const en = {
   'openWith.workspacePreview': 'Workspace preview',
   'openWith.openInTarget': 'Open in {target}',
   'openWith.revealInTarget': 'Reveal in {target}',
+  'openWith.fileType.document': 'Document',
+  'openWith.fileType.web': 'Web',
+  'openWith.fileType.image': 'Image',
+  'openWith.fileType.code': 'Code',
+  'openWith.fileType.file': 'File',
 
   // ─── Workspace Panel ───────────────────────────────
   'workspace.changedFiles': 'Changed files',
