@@ -1304,6 +1304,7 @@ export const en = {
 
   // ─── Thinking Block ──────────────────────────────────────
   'thinking.label': 'Thinking',
+  'thinking.labelDone': 'Thought',
 
   // ─── Tool Calls ──────────────────────────────────────
   'tool.errorOutput': 'Error Output',
