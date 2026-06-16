@@ -158,17 +158,31 @@ jobs:
           bun run build
           bun run build:electron
 
-      - name: Build Electron release artifacts
+      - name: Build signed macOS Electron release artifacts
+        if: matrix.smoke_platform == 'macos' && needs.signing-preflight.outputs.macos_signed == 'true'
         working-directory: desktop
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # 未签名发布：故意不传 CSC_LINK / APPLE_* / WIN_CSC_* 这些 env。
-          # 当对应 secret 缺失时它们会被渲染成空字符串，而 electron-builder 一旦看到
-          # CSC_LINK 这个 key 就会进入证书签名流程，把空路径当成证书去加载，最终报
-          # "<workdir> not a file" 而失败。拿到 Apple Developer ID / Windows 证书后，
-          # 再把对应签名 env 加回来即可开启签名 + 公证。
+          # Signed macOS releases require all of these secrets. Keep this step
+          # separate from the unsigned fallback so empty secrets are never passed
+          # to electron-builder as CSC_LINK / APPLE_* env vars.
+          CSC_LINK: ${{ secrets.MACOS_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: node ./node_modules/electron-builder/out/cli/cli.js ${{ matrix.builder_args }} --publish never
+
+      - name: Build unsigned Electron release artifacts
+        if: matrix.smoke_platform != 'macos' || needs.signing-preflight.outputs.macos_signed != 'true'
+        working-directory: desktop
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Unsigned fallback: do not pass CSC_LINK / APPLE_* / WIN_CSC_* here.
+          # Empty secrets are rendered as empty strings, and electron-builder
+          # treats an empty CSC_LINK key as an explicit certificate path.
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-        run: bunx electron-builder ${{ matrix.builder_args }} --publish never
+        run: node ./node_modules/electron-builder/out/cli/cli.js ${{ matrix.builder_args }} --publish never
 
       - name: Verify packaged app structure
         run: bun run test:package-smoke --platform ${{ matrix.smoke_platform }} --package-kind release --artifacts-dir desktop/build-artifacts/electron
